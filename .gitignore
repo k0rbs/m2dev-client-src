@@ -61,3 +61,5 @@
 *.*.bAk
 *.*.baK
 *.*.bak
+
+build.sh

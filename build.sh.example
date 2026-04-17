@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# --- CONFIGURATION ---
+VM_USER="WIN_USER"
+VM_IP="WIN_IP"
+PROJECT_DIR="Z:\\WIN_SHARE_PATH"
+PROJECT_PATH="$PROJECT_DIR\\build\\WIN_PROJECT.slnx"
+
+RUN_INIT=false
+RUN_BUILD=false
+
+VM_PASS=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -i|--init|init)
+            RUN_INIT=true
+            shift
+            ;;
+        -b|--build|build)
+            RUN_BUILD=true
+            shift
+            ;;
+        -p|--password)
+            VM_PASS="$2"
+            shift 2
+            ;;
+        *)
+            echo "❌ Unknown argument: $1"
+            echo "Usage: $0 [--init|-i] [--build|-b] [--password|-p <password>]"
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$RUN_INIT" = false ] && [ "$RUN_BUILD" = false ]; then
+    echo "❌ Error: You must specify at least one action: --init (-i) or --build (-b)"
+    echo "Usage: $0 [--init|-i] [--build|-b]"
+    exit 1
+fi
+
+echo "🚀 Starting remote execution..."
+
+REMOTE_CMD="call ^\"C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsall.bat^\" x86"
+
+if [ "$RUN_INIT" = true ]; then
+    echo "⚙️  CMake initialization enabled."
+    REMOTE_CMD="$REMOTE_CMD && cd /d ^\"$PROJECT_DIR^\" && cmake -S . -B build"
+fi
+
+if [ "$RUN_BUILD" = true ]; then
+    echo "🔨 MSBuild compilation enabled."
+    REMOTE_CMD="$REMOTE_CMD && msbuild ^\"$PROJECT_PATH^\" /p:Configuration=Release /p:Platform=x86 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17"
+fi
+
+if [ -n "$VM_PASS" ]; then
+    sshpass -p "$VM_PASS" ssh $VM_USER@$VM_IP "cmd.exe /c \"$REMOTE_CMD\""
+else
+    ssh $VM_USER@$VM_IP "cmd.exe /c \"$REMOTE_CMD\""
+fi
+
+if [ $? -eq 0 ]; then
+    echo "✅ Execution successful!"
+else
+    echo "❌ Execution failed."
+fi
