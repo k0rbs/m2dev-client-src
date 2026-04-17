@@ -63,3 +63,4 @@
 *.*.bak
 
 build.sh
+/bin

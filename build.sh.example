@@ -4,10 +4,15 @@
 VM_USER="WIN_USER"
 VM_IP="WIN_IP"
 PROJECT_DIR="Z:\\WIN_SHARE_PATH"
-PROJECT_PATH="$PROJECT_DIR\\build\\WIN_PROJECT.slnx"
+
+# Répertoires 100% locaux à la VM Windows pour la source et le build
+LOCAL_SRC_DIR="C:\\m2dev-client-src"
+LOCAL_BUILD_DIR="C:\\m2dev-build"
+PROJECT_PATH="$LOCAL_BUILD_DIR\\WIN_PROJECT.slnx"
 
 RUN_INIT=false
 RUN_BUILD=false
+BUILD_TYPE="Release"
 
 VM_PASS=""
 
@@ -21,36 +26,56 @@ while [[ $# -gt 0 ]]; do
             RUN_BUILD=true
             shift
             ;;
+        -c|--config)
+            BUILD_TYPE="$2"
+            shift 2
+            ;;
         -p|--password)
             VM_PASS="$2"
             shift 2
             ;;
         *)
             echo "❌ Unknown argument: $1"
-            echo "Usage: $0 [--init|-i] [--build|-b] [--password|-p <password>]"
+            echo "Usage: $0 [--init|-i] [--build|-b] [--config|-c <Debug|Release>] [--password|-p <password>]"
             exit 1
             ;;
     esac
 done
 
+if [ -z "$VM_PASS" ]; then
+    read -s -p "Enter password for $VM_USER@$VM_IP: " VM_PASS
+    echo ""
+fi
+
 if [ "$RUN_INIT" = false ] && [ "$RUN_BUILD" = false ]; then
-    echo "❌ Error: You must specify at least one action: --init (-i) or --build (-b)"
-    echo "Usage: $0 [--init|-i] [--build|-b]"
+    echo "Error: You must specify at least one action: --init (-i) or --build (-b)"
+    echo "Usage: $0 [--init|-i] [--build|-b] [--config|-c <Debug|Release>] [--password|-p <password>]"
     exit 1
 fi
 
-echo "🚀 Starting remote execution..."
+echo "Starting remote execution (Configuration: $BUILD_TYPE)..."
 
 REMOTE_CMD="call \"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat\" x86"
 
+REMOTE_CMD="$REMOTE_CMD && echo [Files] Cleaning old local source... && ( if exist \"$LOCAL_SRC_DIR\" rmdir /S /Q \"$LOCAL_SRC_DIR\" )"
+REMOTE_CMD="$REMOTE_CMD && echo [Files] Syncing source code to C:\\m2dev-client-src... && ( robocopy \"$PROJECT_DIR\" \"$LOCAL_SRC_DIR\" /MIR /XD \"$PROJECT_DIR\\.git\" \"$PROJECT_DIR\\build\" \"$PROJECT_DIR\\bin\" \"$PROJECT_DIR\\output\" \"$PROJECT_DIR\\.vs\" | VER>NUL )"
+
 if [ "$RUN_INIT" = true ]; then
-    echo "⚙️  CMake initialization enabled."
-    REMOTE_CMD="$REMOTE_CMD && cd /d \"$PROJECT_DIR\" && cmake -S . -B build"
+    echo "CMake initialization enabled."
+    REMOTE_CMD="$REMOTE_CMD && echo [CMake] Cleaning CMake cache... && ( if exist \"$LOCAL_BUILD_DIR\\CMakeCache.txt\" del /F /Q \"$LOCAL_BUILD_DIR\\CMakeCache.txt\" )"
+    REMOTE_CMD="$REMOTE_CMD && echo [CMake] Running CMake... && cmake -S \"$LOCAL_SRC_DIR\" -B \"$LOCAL_BUILD_DIR\""
 fi
 
 if [ "$RUN_BUILD" = true ]; then
-    echo "🔨 MSBuild compilation enabled."
-    REMOTE_CMD="$REMOTE_CMD && msbuild \"$PROJECT_PATH\" /p:Configuration=Release /p:Platform=x86 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17"
+    echo "MSBuild compilation enabled."
+    REMOTE_CMD="$REMOTE_CMD && echo [MSBuild] Running MSBuild... && msbuild \"$PROJECT_PATH\" /p:Configuration=$BUILD_TYPE /p:Platform=x64 /p:PlatformToolset=v145 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17"
+    
+    COPY_DEST="$PROJECT_DIR\\bin\\$BUILD_TYPE"
+    REMOTE_CMD="$REMOTE_CMD && if not exist \"$COPY_DEST\" mkdir \"$COPY_DEST\""
+    REMOTE_CMD="$REMOTE_CMD && copy /Y \"$LOCAL_BUILD_DIR\\bin\\$BUILD_TYPE\\Metin2_${BUILD_TYPE}.exe\" \"$COPY_DEST\\\" >nul"
+    REMOTE_CMD="$REMOTE_CMD && copy /Y \"$LOCAL_BUILD_DIR\\bin\\$BUILD_TYPE\\DumpProto.exe\" \"$COPY_DEST\\\" >nul"
+    REMOTE_CMD="$REMOTE_CMD && copy /Y \"$LOCAL_BUILD_DIR\\bin\\$BUILD_TYPE\\PackMaker.exe\" \"$COPY_DEST\\\" >nul"
+    REMOTE_CMD="$REMOTE_CMD && echo [Files] Binaries successfully copied back to Linux at $COPY_DEST"
 fi
 
 if [ -n "$VM_PASS" ]; then
