@@ -41,22 +41,22 @@ fi
 
 echo "🚀 Starting remote execution..."
 
-REMOTE_CMD="call ^\"C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsall.bat^\" x86"
+REMOTE_CMD="call \"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat\" x86"
 
 if [ "$RUN_INIT" = true ]; then
     echo "⚙️  CMake initialization enabled."
-    REMOTE_CMD="$REMOTE_CMD && cd /d ^\"$PROJECT_DIR^\" && cmake -S . -B build"
+    REMOTE_CMD="$REMOTE_CMD && cd /d \"$PROJECT_DIR\" && cmake -S . -B build"
 fi
 
 if [ "$RUN_BUILD" = true ]; then
     echo "🔨 MSBuild compilation enabled."
-    REMOTE_CMD="$REMOTE_CMD && msbuild ^\"$PROJECT_PATH^\" /p:Configuration=Release /p:Platform=x86 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17"
+    REMOTE_CMD="$REMOTE_CMD && msbuild \"$PROJECT_PATH\" /p:Configuration=Release /p:Platform=x86 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17"
 fi
 
 if [ -n "$VM_PASS" ]; then
-    sshpass -p "$VM_PASS" ssh $VM_USER@$VM_IP "cmd.exe /c \"$REMOTE_CMD\""
+    sshpass -p "$VM_PASS" ssh $VM_USER@$VM_IP "$REMOTE_CMD"
 else
-    ssh $VM_USER@$VM_IP "cmd.exe /c \"$REMOTE_CMD\""
+    ssh $VM_USER@$VM_IP "$REMOTE_CMD"
 fi
 
 if [ $? -eq 0 ]; then
