@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# --- CONFIGURATION ---
+SRC_DIR="."
+BUILD_DIR="build"
+PROJECT_PATH="$BUILD_DIR/m2dev-client-src.slnx" # Adapte le nom du projet/solution généré par ton CMake
+CLIENT_PATH="../m2dev-client" # Adapte le chemin final
+
+RUN_INIT=false
+RUN_BUILD=false
+BUILD_TYPE="Release"
+
+# Chemin vers vcvarsall.bat (à adapter selon ta version de VS et de tes outils)
+# Exemple pour VS 2022 Community :
+VCVARS_PATH="C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -i|--init|init)
+            RUN_INIT=true
+            shift
+            ;;
+        -b|--build|build)
+            RUN_BUILD=true
+            shift
+            ;;
+        -c|--config)
+            BUILD_TYPE="$2"
+            shift 2
+            ;;
+        *)
+            echo "❌ Argument inconnu: $1"
+            echo "Usage: $0 [--init|-i] [--build|-b] [--config|-c <Debug|Release>]"
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$RUN_INIT" = false ] && [ "$RUN_BUILD" = false ]; then
+    echo "❌ Erreur: Vous devez spécifier au moins une action: --init (-i) et/ou --build (-b)"
+    echo "Usage: $0 [--init|-i] [--build|-b] [--config|-c <Debug|Release>]"
+    exit 1
+fi
+
+echo "⚙️ Lancement de l'exécution locale (Configuration: $BUILD_TYPE)..."
+
+if [ "$RUN_INIT" = true ]; then
+    echo "🧹 [CMake] Nettoyage du cache CMake..."
+    if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
+        rm -f "$BUILD_DIR/CMakeCache.txt"
+    fi
+    
+    echo "🏗️ [CMake] Lancement de CMake..."
+    # Lancement de CMake
+    # -A x64 peut être retiré ou ajusté si tu utilises un autre générateur, mais c'est standard pour cibler le 64 bits.
+    cmake -S "$SRC_DIR" -B "$BUILD_DIR" -A x64
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Échec de l'initialisation CMake."
+        exit 1
+    fi
+    echo "✅ Initialisation CMake réussie."
+fi
+
+if [ "$RUN_BUILD" = true ]; then
+    echo "🔨 [MSBuild] Lancement de la compilation..."
+    
+    # Création d'un fichier batch temporaire pour éviter l'enfer des guillemets (quotes) entre bash et cmd
+    cat << 'EOF' > temp_build.bat
+@echo off
+call "%~1" x64
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+msbuild "%~2" /p:Configuration=%~3 /p:Platform=x64 /p:PlatformToolset=v145 /p:WindowsTargetPlatformVersion=10.0 /p:LanguageStandard=stdcpp20 /p:LanguageStandard_C=stdc17
+exit /b %ERRORLEVEL%
+EOF
+
+    # On lance cmd.exe et on lui passe notre batch temporaire avec tous les arguments
+    # En bash sous Windows (ex: Git Bash), "/c" est converti en "C:/" par erreur. On utilise donc "//c" pour empêcher ça.
+    cmd.exe //c temp_build.bat "$VCVARS_PATH" "$PROJECT_PATH" "$BUILD_TYPE"
+    BUILD_EXIT_CODE=$?
+    
+    # Nettoyage
+    rm temp_build.bat
+    
+    if [ $BUILD_EXIT_CODE -ne 0 ]; then
+        echo "❌ Échec de la compilation MSBuild."
+        exit 1
+    fi
+    
+    echo "✅ Build réussi. Copie des exécutables..."
+    
+    COPY_DEST="$CLIENT_PATH/$BUILD_TYPE"
+    mkdir -p "$COPY_DEST"
+    
+    # Remplacer les séparateurs de dossiers en slashs pour que bash les gère correctement
+    cp "$BUILD_DIR/bin/$BUILD_TYPE/Metin2_${BUILD_TYPE}.exe" "$COPY_DEST/" 2>/dev/null || echo "⚠️ Attention: Metin2_${BUILD_TYPE}.exe introuvable ou non copié."
+    cp "$BUILD_DIR/bin/$BUILD_TYPE/DumpProto.exe" "$COPY_DEST/" 2>/dev/null || echo "⚠️ Attention: DumpProto.exe introuvable ou non copié."
+    cp "$BUILD_DIR/bin/$BUILD_TYPE/PackMaker.exe" "$COPY_DEST/" 2>/dev/null || echo "⚠️ Attention: PackMaker.exe introuvable ou non copié."
+    
+    echo "✅ Fichiers copiés avec succès dans $COPY_DEST"
+fi
+
+echo "🚀 Exécution terminée avec succès !"

@@ -62,5 +62,6 @@
 *.*.baK
 *.*.bak
 
-build.sh
+build_windows.sh
+build_linux.sh
 /bin
